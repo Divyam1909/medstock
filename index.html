@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedStock Manager</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Print Styles */
+        @media print {
+            body * { visibility: hidden; }
+            #invoice-modal, #invoice-modal * { visibility: visible; }
+            #invoice-modal { 
+                position: absolute; 
+                left: 0; 
+                top: 0; 
+                width: 100%; 
+                height: 100%; 
+                background: white; 
+                padding: 0;
+                margin: 0;
+                display: block !important;
+                z-index: 9999;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- Icons Components ---
+        const Icon = ({ path, className = "w-5 h-5" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            LayoutDashboard: <Icon path={<><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></>} />,
+            Package: <Icon path={<><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22v-9" /></>} />,
+            MapPin: <Icon path={<><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>} />,
+            ShoppingCart: <Icon path={<><circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" /><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" /></>} />,
+            History: <Icon path={<><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12" /><path d="M3 3v9h9" /><path d="M12 7v5l3 3" /></>} />,
+            Settings: <Icon path={<><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></>} />,
+            Trash2: <Icon path={<><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></>} />,
+            Download: <Icon path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>} />,
+            Upload: <Icon path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></>} />,
+            Plus: <Icon path={<><path d="M5 12h14" /><path d="M12 5v14" /></>} />,
+            Tag: <Icon path={<><path d="M12 2H2v10l9.29 9.29a2.5 2.5 0 0 0 3.54 0l4.58-4.58a2.5 2.5 0 0 0 0-3.54L12 2Z" /><circle cx="7" cy="7" r="2" /></>} />,
+            Printer: <Icon path={<><polyline points="6 9 6 2 18 2 18 9" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></>} />,
+            AlertTriangle: <Icon path={<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><line x1="12" x2="12" y1="9" y2="13" /><line x1="12" x2="12.01" y1="17" y2="17" /></>} />,
+            TrendingUp: <Icon path={<><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></>} />,
+            RotateCcw: <Icon path={<><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></>} />,
+        };
+
+        // --- Utils ---
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+        const formatMoney = (amount) => `₹${Number(amount).toLocaleString('en-IN')}`;
+        
+        // --- Main App Component ---
+        function App() {
+            // --- State ---
+            const [view, setView] = useState('dashboard');
+            const [inventory, setInventory] = useState([]);
+            const [destinations, setDestinations] = useState([]);
+            const [transactions, setTransactions] = useState([]);
+            const [labels, setLabels] = useState(['Paid', 'Not Paid', 'Received', 'Pending']);
+            const [notification, setNotification] = useState(null);
+            const [printTransaction, setPrintTransaction] = useState(null);
+
+            // --- Load/Save Data ---
+            useEffect(() => {
+                const loadedData = localStorage.getItem('medStockData');
+                if (loadedData) {
+                    try {
+                        const parsed = JSON.parse(loadedData);
+                        setInventory(parsed.inventory || []);
+                        setDestinations(parsed.destinations || []);
+                        setTransactions(parsed.transactions || []);
+                        setLabels(parsed.labels || ['Paid', 'Not Paid', 'Received', 'Pending']);
+                    } catch (e) {
+                        console.error("Failed to load data", e);
+                    }
+                }
+            }, []);
+
+            useEffect(() => {
+                const data = { inventory, destinations, transactions, labels };
+                localStorage.setItem('medStockData', JSON.stringify(data));
+            }, [inventory, destinations, transactions, labels]);
+
+            const showNotification = (msg, type = 'success', undoAction = null) => {
+                setNotification({ msg, type, undoAction });
+                setTimeout(() => setNotification(null), 5000);
+            };
+
+            // --- Actions ---
+            const addStock = (item) => {
+                setInventory([...inventory, { ...item, id: generateId() }]);
+                showNotification(`Added ${item.name} to stock`);
+            };
+
+            const updateStock = (id, updatedItem) => {
+                setInventory(inventory.map(item => item.id === id ? { ...item, ...updatedItem } : item));
+                showNotification(`Updated stock details`);
+            };
+
+            const updateTransactionStatus = (id, newStatus) => {
+                setTransactions(transactions.map(t => 
+                    t.id === id ? { ...t, label: newStatus } : t
+                ));
+                showNotification(`Status updated to ${newStatus}`);
+            };
+
+            // Undo Delete Logic
+            const deleteStock = (id) => {
+                const itemToDelete = inventory.find(i => i.id === id);
+                if (!itemToDelete) return;
+
+                // Optimistic removal
+                setInventory(inventory.filter(item => item.id !== id));
+
+                showNotification(
+                    `Deleted ${itemToDelete.name}`, 
+                    'neutral',
+                    () => {
+                        // Undo function
+                        setInventory(prev => [...prev, itemToDelete]);
+                        showNotification(`Restored ${itemToDelete.name}`);
+                    }
+                );
+            };
+
+            const addDestination = (name) => {
+                if (!name.trim()) return;
+                setDestinations([...destinations, { id: generateId(), name }]);
+                showNotification('Destination added');
+            };
+
+            const removeDestination = (id) => {
+                setDestinations(destinations.filter(d => d.id !== id));
+            };
+
+            const addLabel = (name) => {
+                if(!name.trim() || labels.includes(name)) return;
+                setLabels([...labels, name]);
+                showNotification('Label added');
+            };
+
+            const removeLabel = (name) => {
+                setLabels(labels.filter(l => l !== name));
+            };
+
+            const createTransaction = (transactionData) => {
+                const { stockId, quantity, destinationId, label, date } = transactionData;
+                const stockItem = inventory.find(i => i.id === stockId);
+                const dest = destinations.find(d => d.id === destinationId);
+
+                if (!stockItem) return showNotification('Invalid Stock Item', 'error');
+                if (stockItem.quantity < quantity) return showNotification('Insufficient Stock!', 'error');
+
+                const totalCost = stockItem.costPrice * quantity;
+                const totalSelling = stockItem.sellingPrice * quantity;
+                const profit = totalSelling - totalCost;
+
+                const newTransaction = {
+                    id: generateId(),
+                    date: date || new Date().toISOString(),
+                    stockId,
+                    stockName: stockItem.name,
+                    quantity: Number(quantity),
+                    costPrice: Number(stockItem.costPrice),
+                    sellingPrice: Number(stockItem.sellingPrice),
+                    totalAmount: totalSelling,
+                    profit,
+                    destinationId,
+                    destinationName: dest ? dest.name : 'Unknown',
+                    label
+                };
+
+                const updatedInventory = inventory.map(item => {
+                    if (item.id === stockId) {
+                        return { ...item, quantity: item.quantity - quantity };
+                    }
+                    return item;
+                });
+
+                setTransactions([newTransaction, ...transactions]);
+                setInventory(updatedInventory);
+                showNotification('Transaction recorded successfully!');
+                setView('history');
+            };
+
+            const importData = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        if(confirm("This will overwrite current data. Continue?")) {
+                            setInventory(parsed.inventory || []);
+                            setDestinations(parsed.destinations || []);
+                            setTransactions(parsed.transactions || []);
+                            setLabels(parsed.labels || []);
+                            showNotification('Data imported successfully');
+                        }
+                    } catch (err) {
+                        showNotification('Invalid JSON file', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            const exportData = () => {
+                const dataStr = JSON.stringify({ inventory, destinations, transactions, labels }, null, 2);
+                const blob = new Blob([dataStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `medstock_backup_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            // --- Sub-components (Views) ---
+
+            const InvoiceModal = ({ transaction, onClose }) => {
+                if (!transaction) return null;
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 no-print">
+                        <div className="bg-white w-full max-w-2xl p-8 rounded-lg shadow-xl relative animate-fadeIn" id="invoice-modal">
+                            
+                            {/* Header (Print Only or Screen) */}
+                            <div className="border-b-2 border-gray-200 pb-4 mb-6">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h1 className="text-3xl font-bold text-gray-800">INVOICE</h1>
+                                        <p className="text-gray-500">#{transaction.id.toUpperCase()}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <h2 className="text-xl font-bold text-blue-600">MedStock Manager</h2>
+                                        <p className="text-gray-500 text-sm">Automated Stock System</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Details */}
+                            <div className="grid grid-cols-2 gap-8 mb-8">
+                                <div>
+                                    <h3 className="font-bold text-gray-700 mb-2">Billed To:</h3>
+                                    <p className="text-lg">{transaction.destinationName}</p>
+                                    <p className="text-sm text-gray-500 mt-1">Status: <span className="font-bold">{transaction.label}</span></p>
+                                </div>
+                                <div className="text-right">
+                                    <h3 className="font-bold text-gray-700 mb-2">Date:</h3>
+                                    <p>{new Date(transaction.date).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+
+                            {/* Table */}
+                            <table className="w-full mb-8">
+                                <thead className="bg-gray-100">
+                                    <tr>
+                                        <th className="px-4 py-2 text-left">Item Description</th>
+                                        <th className="px-4 py-2 text-right">Quantity</th>
+                                        <th className="px-4 py-2 text-right">Unit Price</th>
+                                        <th className="px-4 py-2 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="border-b">
+                                        <td className="px-4 py-3">{transaction.stockName}</td>
+                                        <td className="px-4 py-3 text-right">{transaction.quantity}</td>
+                                        <td className="px-4 py-3 text-right">{formatMoney(transaction.sellingPrice)}</td>
+                                        <td className="px-4 py-3 text-right font-bold">{formatMoney(transaction.totalAmount)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            {/* Total */}
+                            <div className="flex justify-end mb-8">
+                                <div className="text-right w-1/2">
+                                    <div className="flex justify-between border-t border-gray-300 pt-2 text-xl font-bold text-gray-800">
+                                        <span>Total:</span>
+                                        <span>{formatMoney(transaction.totalAmount)}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="text-center text-gray-400 text-sm mt-12 pt-4 border-t">
+                                <p>Thank you for your business!</p>
+                            </div>
+
+                            {/* Actions (Hidden in Print) */}
+                            <div className="absolute top-4 right-4 flex gap-2 no-print">
+                                <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 flex items-center gap-2">
+                                    {Icons.Printer} Print
+                                </button>
+                                <button onClick={onClose} className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const Dashboard = () => {
+                const totalStockValue = inventory.reduce((acc, item) => acc + (item.quantity * item.costPrice), 0);
+                const totalRevenue = transactions.reduce((acc, t) => acc + t.totalAmount, 0);
+                const totalProfit = transactions.reduce((acc, t) => acc + t.profit, 0);
+
+                // Low Stock Logic
+                const lowStockItems = inventory.filter(i => i.quantity < 10);
+
+                // Top Selling Logic
+                const topSelling = useMemo(() => {
+                    const stats = {};
+                    transactions.forEach(t => {
+                        if(!stats[t.stockName]) stats[t.stockName] = { qty: 0, profit: 0, name: t.stockName };
+                        stats[t.stockName].qty += t.quantity;
+                        stats[t.stockName].profit += t.profit;
+                    });
+                    return Object.values(stats)
+                        .sort((a, b) => b.qty - a.qty) // Sort by quantity
+                        .slice(0, 5);
+                }, [transactions]);
+
+                return (
+                    <div className="space-y-6 fade-in">
+                        {/* Key Metrics */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-gray-500 text-sm font-medium">Total Inventory Value</h3>
+                                <p className="text-2xl font-bold text-blue-600 mt-2">{formatMoney(totalStockValue)}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-gray-500 text-sm font-medium">Total Revenue</h3>
+                                <p className="text-2xl font-bold text-green-600 mt-2">{formatMoney(totalRevenue)}</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-gray-500 text-sm font-medium">Total Profit</h3>
+                                <p className="text-2xl font-bold text-purple-600 mt-2">{formatMoney(totalProfit)}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Low Stock Alert */}
+                            <div className={`p-6 rounded-xl shadow-sm border border-red-100 ${lowStockItems.length > 0 ? 'bg-red-50' : 'bg-white'}`}>
+                                <h3 className="text-lg font-bold text-red-800 mb-4 flex items-center gap-2">
+                                    {Icons.AlertTriangle} Low Stock Alerts
+                                </h3>
+                                {lowStockItems.length === 0 ? (
+                                    <p className="text-gray-500 text-sm">All stock levels are healthy.</p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {lowStockItems.map(item => (
+                                            <li key={item.id} className="flex justify-between items-center bg-white p-2 rounded border border-red-200">
+                                                <span className="font-medium text-red-700">{item.name}</span>
+                                                <span className="text-xs font-bold bg-red-200 text-red-800 px-2 py-1 rounded">Qty: {item.quantity}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+
+                            {/* Top Selling Products */}
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                                <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    {Icons.TrendingUp} Top Selling Products
+                                </h3>
+                                {topSelling.length === 0 ? (
+                                    <p className="text-gray-500 text-sm">No sales data available yet.</p>
+                                ) : (
+                                    <ul className="space-y-3">
+                                        {topSelling.map((item, idx) => (
+                                            <li key={item.name} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${idx < 3 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                        {idx + 1}
+                                                    </span>
+                                                    <span className="font-medium text-gray-700">{item.name}</span>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="block font-bold text-gray-800">{item.qty} Sold</span>
+                                                    <span className="text-xs text-green-600">+{formatMoney(item.profit)} profit</span>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Recent Transactions */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">Recent Transactions</h3>
+                            {transactions.length === 0 ? (
+                                <p className="text-gray-400">No transactions yet.</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-600">
+                                            <tr>
+                                                <th className="px-4 py-3">Date</th>
+                                                <th className="px-4 py-3">Item</th>
+                                                <th className="px-4 py-3">Dest</th>
+                                                <th className="px-4 py-3 text-right">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {transactions.slice(0, 5).map(t => (
+                                                <tr key={t.id} className="border-b last:border-0 hover:bg-gray-50">
+                                                    <td className="px-4 py-3 text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
+                                                    <td className="px-4 py-3 font-medium">{t.stockName} <span className="text-gray-400 text-xs">x{t.quantity}</span></td>
+                                                    <td className="px-4 py-3">{t.destinationName}</td>
+                                                    <td className="px-4 py-3 text-right font-medium text-green-600">{formatMoney(t.totalAmount)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            };
+
+            const InventoryView = () => {
+                const [form, setForm] = useState({ name: '', quantity: '', costPrice: '', sellingPrice: '' });
+
+                const handleSubmit = (e) => {
+                    e.preventDefault();
+                    addStock({
+                        name: form.name,
+                        quantity: Number(form.quantity),
+                        costPrice: Number(form.costPrice),
+                        sellingPrice: Number(form.sellingPrice)
+                    });
+                    setForm({ name: '', quantity: '', costPrice: '', sellingPrice: '' });
+                };
+
+                return (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in">
+                        <div className="lg:col-span-1">
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 sticky top-4">
+                                <h3 className="text-lg font-bold mb-4">Add Stock</h3>
+                                <form onSubmit={handleSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Medicine Name</label>
+                                        <input required type="text" className="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                            value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Paracetamol" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Quantity</label>
+                                        <input required type="number" min="0" className="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                            value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} placeholder="0" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Cost Price</label>
+                                            <input required type="number" min="0" className="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                                value={form.costPrice} onChange={e => setForm({...form, costPrice: e.target.value})} placeholder="₹" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700">Selling Price</label>
+                                            <input required type="number" min="0" className="w-full mt-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                                value={form.sellingPrice} onChange={e => setForm({...form, sellingPrice: e.target.value})} placeholder="₹" />
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">Add to Inventory</button>
+                                </form>
+                            </div>
+                        </div>
+                        <div className="lg:col-span-2">
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                                <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+                                    <h3 className="font-bold text-gray-700">Current Stock</h3>
+                                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">{inventory.length} Items</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-sm text-left">
+                                        <thead className="bg-gray-50 text-gray-600">
+                                            <tr>
+                                                <th className="px-4 py-3">Name</th>
+                                                <th className="px-4 py-3">Qty</th>
+                                                <th className="px-4 py-3">CP</th>
+                                                <th className="px-4 py-3">SP</th>
+                                                <th className="px-4 py-3 text-right">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {inventory.map(item => (
+                                                <tr key={item.id} className="border-b last:border-0 hover:bg-gray-50">
+                                                    <td className="px-4 py-3 font-medium text-gray-800">{item.name}</td>
+                                                    <td className={`px-4 py-3 font-bold ${item.quantity < 10 ? 'text-red-500' : 'text-green-600'}`}>{item.quantity}</td>
+                                                    <td className="px-4 py-3 text-gray-500">{formatMoney(item.costPrice)}</td>
+                                                    <td className="px-4 py-3 text-gray-500">{formatMoney(item.sellingPrice)}</td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <button onClick={() => deleteStock(item.id)} className="text-red-500 hover:text-red-700 p-1">
+                                                            {Icons.Trash2}
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                            {inventory.length === 0 && (
+                                                <tr><td colSpan="5" className="text-center py-8 text-gray-400">Inventory is empty.</td></tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const DestinationsView = () => {
+                const [newDest, setNewDest] = useState('');
+                const [newLabel, setNewLabel] = useState('');
+
+                return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
+                        {/* Destinations */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">{Icons.MapPin} Destinations</h3>
+                            <div className="flex gap-2 mb-4">
+                                <input type="text" value={newDest} onChange={e => setNewDest(e.target.value)} 
+                                    className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. Warehouse A" />
+                                <button onClick={() => { addDestination(newDest); setNewDest(''); }} 
+                                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">{Icons.Plus}</button>
+                            </div>
+                            <ul className="space-y-2">
+                                {destinations.map(d => (
+                                    <li key={d.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                                        <span className="font-medium text-gray-700">{d.name}</span>
+                                        <button onClick={() => removeDestination(d.id)} className="text-red-400 hover:text-red-600">{Icons.Trash2}</button>
+                                    </li>
+                                ))}
+                                {destinations.length === 0 && <p className="text-gray-400 text-sm text-center italic">No destinations added.</p>}
+                            </ul>
+                        </div>
+
+                        {/* Labels */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">{Icons.Tag} Transaction Labels</h3>
+                            <div className="flex gap-2 mb-4">
+                                <input type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)} 
+                                    className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-purple-500 outline-none" placeholder="e.g. Delivered" />
+                                <button onClick={() => { addLabel(newLabel); setNewLabel(''); }} 
+                                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">{Icons.Plus}</button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {labels.map(l => (
+                                    <span key={l} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+                                        {l}
+                                        <button onClick={() => removeLabel(l)} className="ml-2 text-purple-600 hover:text-purple-900">&times;</button>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const TransactionView = () => {
+                const [form, setForm] = useState({ stockId: '', quantity: 1, destinationId: '', label: '', date: new Date().toISOString().split('T')[0] });
+                
+                const selectedStock = inventory.find(i => i.id === form.stockId);
+                const totalCost = selectedStock ? selectedStock.sellingPrice * form.quantity : 0;
+                const profit = selectedStock ? (selectedStock.sellingPrice - selectedStock.costPrice) * form.quantity : 0;
+
+                const handleSubmit = (e) => {
+                    e.preventDefault();
+                    createTransaction(form);
+                    setForm({ ...form, stockId: '', quantity: 1 }); // Reset crucial fields
+                };
+
+                return (
+                    <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-sm border border-gray-100 fade-in">
+                        <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
+                            {Icons.ShoppingCart} New Transaction
+                        </h2>
+                        
+                        {inventory.length === 0 || destinations.length === 0 ? (
+                            <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg">
+                                Please ensure you have added both <strong>Inventory</strong> and <strong>Destinations</strong> before creating a transaction.
+                            </div>
+                        ) : (
+                            <form onSubmit={handleSubmit} className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                        <input type="date" required className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={form.date} onChange={e => setForm({...form, date: e.target.value})} />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Status Label</label>
+                                        <select required className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                            value={form.label} onChange={e => setForm({...form, label: e.target.value})}>
+                                            <option value="">Select Status</option>
+                                            {labels.map(l => <option key={l} value={l}>{l}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Select Medicine</label>
+                                    <select required className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                        value={form.stockId} onChange={e => setForm({...form, stockId: e.target.value})}>
+                                        <option value="">Choose item...</option>
+                                        {inventory.map(item => (
+                                            <option key={item.id} value={item.id} disabled={item.quantity === 0}>
+                                                {item.name} (Qty: {item.quantity}) - {formatMoney(item.sellingPrice)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Destination</label>
+                                        <select required className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                            value={form.destinationId} onChange={e => setForm({...form, destinationId: e.target.value})}>
+                                            <option value="">Select Destination</option>
+                                            {destinations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                                        <input type="number" required min="1" max={selectedStock?.quantity || 1} 
+                                            className="w-full p-2 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={form.quantity} onChange={e => setForm({...form, quantity: Number(e.target.value)})} />
+                                    </div>
+                                </div>
+
+                                {selectedStock && (
+                                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-xs text-gray-500 uppercase font-bold">Total Price</p>
+                                            <p className="text-xl font-bold text-blue-600">{formatMoney(totalCost)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-gray-500 uppercase font-bold">Estimated Profit</p>
+                                            <p className="text-xl font-bold text-green-600">{formatMoney(profit)}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <button type="submit" className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition shadow-lg shadow-green-200">
+                                    Confirm Transaction
+                                </button>
+                            </form>
+                        )}
+                    </div>
+                );
+            };
+
+            const HistoryView = () => {
+                const [filterDate, setFilterDate] = useState('');
+                const [searchTerm, setSearchTerm] = useState('');
+                const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+                const [editingId, setEditingId] = useState(null);
+
+                // 1. Filter
+                const filtered = transactions.filter(t => {
+                    const matchesDate = filterDate ? t.date.startsWith(filterDate) : true;
+                    const matchesSearch = t.stockName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                          t.destinationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                          t.label.toLowerCase().includes(searchTerm.toLowerCase());
+                    return matchesDate && matchesSearch;
+                });
+
+                // 2. Sort
+                const sorted = [...filtered].sort((a, b) => {
+                    let aVal = a[sortConfig.key];
+                    let bVal = b[sortConfig.key];
+
+                    if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+                    if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+
+                const handleSort = (key) => {
+                    let direction = 'asc';
+                    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+                        direction = 'desc';
+                    }
+                    setSortConfig({ key, direction });
+                };
+
+                const SortHeader = ({ label, sortKey, align = 'left' }) => (
+                    <th 
+                        className={`px-6 py-3 cursor-pointer hover:bg-gray-100 transition select-none text-${align}`}
+                        onClick={() => handleSort(sortKey)}
+                    >
+                        <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+                            {label}
+                            {sortConfig.key === sortKey && (
+                                <span className="text-blue-500">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                            )}
+                            {sortConfig.key !== sortKey && <span className="text-gray-300">↕</span>}
+                        </div>
+                    </th>
+                );
+
+                const handleStatusChange = (t, newLabel) => {
+                    if (newLabel === t.label) {
+                        setEditingId(null); 
+                        return;
+                    }
+                    
+                    if (confirm(`Change status from "${t.label}" to "${newLabel}"?`)) {
+                        updateTransactionStatus(t.id, newLabel);
+                    }
+                    setEditingId(null);
+                };
+
+                return (
+                    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden fade-in">
+                        <div className="p-4 border-b flex flex-col md:flex-row justify-between items-center gap-4">
+                            <h3 className="font-bold text-lg text-gray-800">Transaction History</h3>
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <input type="date" className="p-2 border rounded-lg text-sm" 
+                                    value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+                                <input type="text" placeholder="Search..." className="p-2 border rounded-lg text-sm flex-1"
+                                    value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto min-h-[400px]">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-gray-50 text-gray-600 uppercase text-xs tracking-wider">
+                                    <tr>
+                                        <SortHeader label="Status" sortKey="label" />
+                                        <SortHeader label="Date" sortKey="date" />
+                                        <SortHeader label="Medicine" sortKey="stockName" />
+                                        <SortHeader label="Destination" sortKey="destinationName" />
+                                        <SortHeader label="Qty" sortKey="quantity" />
+                                        <SortHeader label="Total" sortKey="totalAmount" align="right" />
+                                        <th className="px-6 py-3 text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {sorted.map(t => (
+                                        <tr key={t.id} className="hover:bg-gray-50 transition group">
+                                            <td className="px-6 py-4">
+                                                {editingId === t.id ? (
+                                                    <select 
+                                                        autoFocus
+                                                        className="p-1 border rounded text-xs bg-white shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                                        defaultValue={t.label}
+                                                        onBlur={() => setEditingId(null)}
+                                                        onChange={(e) => handleStatusChange(t, e.target.value)}
+                                                    >
+                                                        {labels.map(l => <option key={l} value={l}>{l}</option>)}
+                                                    </select>
+                                                ) : (
+                                                    <button 
+                                                        onClick={() => setEditingId(t.id)}
+                                                        title="Click to change status"
+                                                        className="px-2 py-1 rounded text-xs font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 transition flex items-center gap-1"
+                                                    >
+                                                        {t.label}
+                                                        <span className="opacity-0 group-hover:opacity-50 text-[10px]">✎</span>
+                                                    </button>
+                                                )}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-gray-500">{new Date(t.date).toLocaleDateString()}</td>
+                                            <td className="px-6 py-4 font-medium text-gray-800">{t.stockName}</td>
+                                            <td className="px-6 py-4 text-gray-600">{t.destinationName}</td>
+                                            <td className="px-6 py-4 text-gray-600">{t.quantity}</td>
+                                            <td className="px-6 py-4 text-right font-bold text-gray-800">{formatMoney(t.totalAmount)}</td>
+                                            <td className="px-6 py-4 text-right">
+                                                <button onClick={() => setPrintTransaction(t)} className="text-gray-400 hover:text-blue-600 transition" title="Print Invoice">
+                                                    {Icons.Printer}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {sorted.length === 0 && (
+                                        <tr><td colSpan="7" className="text-center py-8 text-gray-400">No records found.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
+            const SettingsView = () => (
+                <div className="max-w-xl mx-auto space-y-6 fade-in">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">{Icons.Download} Data Management</h3>
+                        <p className="text-sm text-gray-500 mb-6">
+                            Export your data to JSON to back it up or move it to another device. Import a JSON file to restore data.
+                        </p>
+                        
+                        <div className="flex flex-col gap-4">
+                            <button onClick={exportData} className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition">
+                                {Icons.Download} Export Data to JSON
+                            </button>
+                            
+                            <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition group">
+                                <input type="file" accept=".json" onChange={importData} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                                <div className="flex flex-col items-center justify-center text-gray-500 group-hover:text-blue-500">
+                                    {Icons.Upload}
+                                    <span className="mt-2 text-sm font-medium">Click to Import JSON</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // --- Layout ---
+            const NavItem = ({ id, icon, label }) => (
+                <button 
+                    onClick={() => setView(id)}
+                    className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-medium transition-colors ${view === id ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                    {icon}
+                    <span>{label}</span>
+                </button>
+            );
+
+            return (
+                <div className="min-h-screen flex flex-col md:flex-row">
+                    {/* Invoice Modal (Visible when printTransaction is set) */}
+                    <InvoiceModal transaction={printTransaction} onClose={() => setPrintTransaction(null)} />
+
+                    {/* Notification Toast */}
+                    {notification && (
+                        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium animate-bounce flex items-center gap-3 ${notification.type === 'error' ? 'bg-red-500' : notification.type === 'neutral' ? 'bg-gray-700' : 'bg-gray-800'}`}>
+                            <span>{notification.msg}</span>
+                            {notification.undoAction && (
+                                <button 
+                                    onClick={() => { notification.undoAction(); setNotification(null); }}
+                                    className="bg-white text-gray-800 text-xs px-2 py-1 rounded hover:bg-gray-200 uppercase font-bold tracking-wide"
+                                >
+                                    Undo
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Sidebar */}
+                    <aside className="w-full md:w-64 bg-white border-r border-gray-200 flex-shrink-0 no-print">
+                        <div className="p-6 border-b border-gray-100">
+                            <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                <span className="bg-blue-600 text-white p-1 rounded">MS</span> MedStock
+                            </h1>
+                        </div>
+                        <nav className="p-4 space-y-1">
+                            <NavItem id="dashboard" icon={Icons.LayoutDashboard} label="Dashboard" />
+                            <NavItem id="inventory" icon={Icons.Package} label="Inventory" />
+                            <NavItem id="destinations" icon={Icons.MapPin} label="Destinations" />
+                            <NavItem id="transaction" icon={Icons.ShoppingCart} label="New Transaction" />
+                            <NavItem id="history" icon={Icons.History} label="History Log" />
+                            <div className="pt-4 mt-4 border-t border-gray-100">
+                                <NavItem id="settings" icon={Icons.Settings} label="Settings" />
+                            </div>
+                        </nav>
+                    </aside>
+
+                    {/* Main Content */}
+                    <main className="flex-1 p-4 md:p-8 overflow-y-auto no-print">
+                        <header className="mb-8 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-2xl font-bold text-gray-800 capitalize">{view.replace('-', ' ')}</h2>
+                                <p className="text-gray-500 text-sm">Manage your medical stock efficiently.</p>
+                            </div>
+                            <div className="text-sm text-gray-400 bg-white px-3 py-1 rounded-full border shadow-sm">
+                                {new Date().toLocaleDateString()}
+                            </div>
+                        </header>
+
+                        {view === 'dashboard' && <Dashboard />}
+                        {view === 'inventory' && <InventoryView />}
+                        {view === 'destinations' && <DestinationsView />}
+                        {view === 'transaction' && <TransactionView />}
+                        {view === 'history' && <HistoryView />}
+                        {view === 'settings' && <SettingsView />}
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
