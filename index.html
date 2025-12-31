@@ -1,20 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MedStock Manager</title>
-    
+
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
+
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
@@ -35,24 +36,58 @@
     </script>
 
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f5f5f4; color: #44403c; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f4;
+            color: #44403c;
+        }
+
         /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #e7e5e4; }
-        ::-webkit-scrollbar-thumb { background: #a8a29e; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #78716c; }
-        
-        .fade-in { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #e7e5e4;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #a8a29e;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #78716c;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
 
         /* Print Styles */
         @media print {
             body * {
                 visibility: hidden;
             }
-            .print-content, .print-content * {
+
+            .print-content,
+            .print-content * {
                 visibility: visible;
             }
+
             .print-content {
                 position: absolute;
                 left: 0;
@@ -63,17 +98,21 @@
                 background: white;
                 z-index: 9999;
             }
+
             .no-print {
                 display: none !important;
             }
+
             /* Reset body background for cleaner print */
             body {
                 background: white;
-                overflow: hidden; /* Prevent scrollbars in print */
+                overflow: hidden;
+                /* Prevent scrollbars in print */
             }
         }
     </style>
 </head>
+
 <body>
     <div id="root"></div>
 
@@ -109,7 +148,7 @@
         // --- Utils ---
         const generateId = () => Math.random().toString(36).substr(2, 9);
         const formatMoney = (amount) => `₹${Number(amount).toLocaleString('en-IN')}`;
-        
+
         const formatDateDisplay = (dateStr) => {
             if (!dateStr) return '';
             const date = new Date(dateStr);
@@ -118,11 +157,18 @@
             const y = date.getFullYear();
             return `${d}/${m}/${y}`;
         }
-        
+
+        // --- Helper function for URL hash-based navigation ---
+        const getInitialView = () => {
+            const hash = window.location.hash.slice(1); // Remove '#'
+            const validViews = ['dashboard', 'inventory', 'destinations', 'transaction', 'history', 'settings'];
+            return validViews.includes(hash) ? hash : 'dashboard';
+        };
+
         // --- Main App Component ---
         function App() {
             // --- State ---
-            const [view, setView] = useState('dashboard');
+            const [view, setView] = useState(getInitialView);
             const [inventory, setInventory] = useState([]);
             const [destinations, setDestinations] = useState([]);
             const [transactions, setTransactions] = useState([]);
@@ -149,6 +195,27 @@
                 }
             }, []);
 
+            // --- URL Hash Navigation ---
+            // Update URL hash when view changes
+            useEffect(() => {
+                if (window.location.hash.slice(1) !== view) {
+                    window.history.pushState(null, '', `#${view}`);
+                }
+            }, [view]);
+
+            // Listen for browser back/forward buttons
+            useEffect(() => {
+                const handlePopState = () => {
+                    const hash = window.location.hash.slice(1);
+                    const validViews = ['dashboard', 'inventory', 'destinations', 'transaction', 'history', 'settings'];
+                    if (validViews.includes(hash) && hash !== view) {
+                        setView(hash);
+                    }
+                };
+                window.addEventListener('popstate', handlePopState);
+                return () => window.removeEventListener('popstate', handlePopState);
+            }, [view]);
+
             useEffect(() => {
                 const data = { inventory, destinations, transactions, labels };
                 localStorage.setItem('medStockData', JSON.stringify(data));
@@ -171,10 +238,72 @@
             };
 
             const updateTransactionStatus = (id, newStatus) => {
-                setTransactions(transactions.map(t => 
+                setTransactions(transactions.map(t =>
                     t.id === id ? { ...t, label: newStatus } : t
                 ));
                 showNotification(`Status updated to ${newStatus}`);
+            };
+
+            const deleteTransaction = (id) => {
+                const transactionToDelete = transactions.find(t => t.id === id);
+                if (!transactionToDelete) return;
+
+                // Restore inventory quantity
+                const stockItem = inventory.find(i => i.id === transactionToDelete.stockId);
+                if (stockItem) {
+                    setInventory(inventory.map(item =>
+                        item.id === transactionToDelete.stockId
+                            ? { ...item, quantity: item.quantity + transactionToDelete.quantity }
+                            : item
+                    ));
+                }
+
+                setTransactions(transactions.filter(t => t.id !== id));
+                showNotification(
+                    `Deleted transaction for ${transactionToDelete.stockName}`,
+                    'neutral',
+                    () => {
+                        // Undo: restore transaction and reduce inventory again
+                        setTransactions(prev => [...prev, transactionToDelete]);
+                        if (stockItem) {
+                            setInventory(prev => prev.map(item =>
+                                item.id === transactionToDelete.stockId
+                                    ? { ...item, quantity: item.quantity - transactionToDelete.quantity }
+                                    : item
+                            ));
+                        }
+                        showNotification(`Restored transaction for ${transactionToDelete.stockName}`);
+                    }
+                );
+            };
+
+            const updateTransaction = (id, updatedData) => {
+                const oldTransaction = transactions.find(t => t.id === id);
+                if (!oldTransaction) return;
+
+                // Calculate new amounts
+                const newTotalAmount = updatedData.sellingPrice * updatedData.quantity;
+                const newProfit = (updatedData.sellingPrice - updatedData.costPrice) * updatedData.quantity;
+
+                // Update inventory if quantity changed
+                const quantityDiff = oldTransaction.quantity - updatedData.quantity;
+                if (quantityDiff !== 0) {
+                    setInventory(inventory.map(item =>
+                        item.id === oldTransaction.stockId
+                            ? { ...item, quantity: item.quantity + quantityDiff }
+                            : item
+                    ));
+                }
+
+                setTransactions(transactions.map(t =>
+                    t.id === id ? {
+                        ...t,
+                        ...updatedData,
+                        totalAmount: newTotalAmount,
+                        profit: newProfit
+                    } : t
+                ));
+                showNotification('Transaction updated successfully');
             };
 
             const deleteStock = (id) => {
@@ -182,7 +311,7 @@
                 if (!itemToDelete) return;
                 setInventory(inventory.filter(item => item.id !== id));
                 showNotification(
-                    `Deleted ${itemToDelete.name}`, 
+                    `Deleted ${itemToDelete.name}`,
                     'neutral',
                     () => {
                         setInventory(prev => [...prev, itemToDelete]);
@@ -202,7 +331,7 @@
             };
 
             const addLabel = (name) => {
-                if(!name.trim() || labels.includes(name)) return;
+                if (!name.trim() || labels.includes(name)) return;
                 setLabels([...labels, name]);
                 showNotification('Label added');
             };
@@ -221,10 +350,10 @@
 
                 // Prepare updates
                 cart.forEach(item => {
-                    const currentQty = inventoryUpdates.has(item.stockId) 
-                        ? inventoryUpdates.get(item.stockId) 
+                    const currentQty = inventoryUpdates.has(item.stockId)
+                        ? inventoryUpdates.get(item.stockId)
                         : inventory.find(i => i.id === item.stockId).quantity;
-                    
+
                     inventoryUpdates.set(item.stockId, currentQty - item.quantity);
 
                     newTransactions.push({
@@ -260,7 +389,7 @@
 
             const clearData = (type) => {
                 if (!confirm(`Are you sure you want to delete ALL ${type}? This cannot be undone.`)) return;
-                
+
                 if (type === 'Inventory') setInventory([]);
                 if (type === 'History') setTransactions([]);
                 if (type === 'Everything') {
@@ -289,12 +418,12 @@
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
                         {/* Wrapper logic: no-print removed, using print-content class on the inner div */}
                         <div className="bg-white w-full max-w-2xl p-8 rounded-lg shadow-xl relative animate-fadeIn print-content" id="invoice-modal">
-                            
+
                             <div className="border-b-2 border-amber-200 pb-4 mb-6">
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <h1 className="text-3xl font-bold text-amber-900">INVOICE</h1>
-                                        <p className="text-stone-500">#{firstTransaction.invoiceId.toUpperCase().substring(0,8)}</p>
+                                        <p className="text-stone-500">#{firstTransaction.invoiceId.toUpperCase().substring(0, 8)}</p>
                                     </div>
                                     <div className="text-right">
                                         <h2 className="text-xl font-bold text-amber-600">MedStock Manager</h2>
@@ -368,8 +497,8 @@
                     return transactions.filter(t => {
                         const transactionDate = new Date(t.date);
                         return t.destinationId === destinationId &&
-                               transactionDate.getMonth() === parseInt(month) &&
-                               transactionDate.getFullYear() === parseInt(year);
+                            transactionDate.getMonth() === parseInt(month) &&
+                            transactionDate.getFullYear() === parseInt(year);
                     });
                 }, [show, destinationId, month, year, transactions]);
 
@@ -391,7 +520,7 @@
                 if (!show) return null;
 
                 const monthNames = ["January", "February", "March", "April", "May", "June",
-                                  "July", "August", "September", "October", "November", "December"];
+                    "July", "August", "September", "October", "November", "December"];
                 const displayMonth = monthNames[parseInt(month)];
 
                 return (
@@ -420,7 +549,7 @@
                                     <p>{formatDateDisplay(new Date().toISOString())}</p>
                                 </div>
                             </div>
-                            
+
                             {reportTransactions.length === 0 ? (
                                 <div className="text-center py-12 text-stone-500 text-lg">
                                     No transactions found for {destinationName} in {displayMonth}, {year}.
@@ -479,35 +608,145 @@
             };
 
             const Dashboard = () => {
+                // Date filter state
+                const [dateFilter, setDateFilter] = useState('all'); // 'all', 'week', 'month', 'year', 'custom'
+                const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+
+                // Calculate date ranges
+                const getDateRange = () => {
+                    const now = new Date();
+                    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+                    switch (dateFilter) {
+                        case 'week':
+                            const weekStart = new Date(today);
+                            weekStart.setDate(today.getDate() - today.getDay());
+                            return { start: weekStart, end: now };
+                        case 'month':
+                            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                            return { start: monthStart, end: now };
+                        case 'year':
+                            const yearStart = new Date(now.getFullYear(), 0, 1);
+                            return { start: yearStart, end: now };
+                        case 'custom':
+                            return {
+                                start: customDateRange.start ? new Date(customDateRange.start) : null,
+                                end: customDateRange.end ? new Date(customDateRange.end + 'T23:59:59') : null
+                            };
+                        default:
+                            return { start: null, end: null };
+                    }
+                };
+
+                // Filter transactions by date
+                const filteredTransactions = useMemo(() => {
+                    const range = getDateRange();
+                    if (!range.start && !range.end) return transactions;
+
+                    return transactions.filter(t => {
+                        const tDate = new Date(t.date);
+                        if (range.start && tDate < range.start) return false;
+                        if (range.end && tDate > range.end) return false;
+                        return true;
+                    });
+                }, [transactions, dateFilter, customDateRange]);
+
                 const totalStockValue = inventory.reduce((acc, item) => acc + (item.quantity * item.costPrice), 0);
-                const totalRevenue = transactions.reduce((acc, t) => acc + t.totalAmount, 0);
-                const totalProfit = transactions.reduce((acc, t) => acc + t.profit, 0);
+                const totalRevenue = filteredTransactions.reduce((acc, t) => acc + t.totalAmount, 0);
+                const totalProfit = filteredTransactions.reduce((acc, t) => acc + t.profit, 0);
+                // Calculate total cost price from transactions
+                // For legacy data: if costPrice is missing, derive from sellingPrice - (profit / quantity)
+                const totalCostPrice = filteredTransactions.reduce((acc, t) => {
+                    const costPricePerUnit = t.costPrice || (t.sellingPrice - (t.profit / t.quantity));
+                    return acc + (costPricePerUnit * t.quantity);
+                }, 0);
+
+                // Calculate profit margin percentage
+                const profitMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0;
+
                 const lowStockItems = inventory.filter(i => i.quantity < 10);
 
                 const topSelling = useMemo(() => {
                     const stats = {};
-                    transactions.forEach(t => {
-                        if(!stats[t.stockName]) stats[t.stockName] = { qty: 0, profit: 0, name: t.stockName };
+                    filteredTransactions.forEach(t => {
+                        if (!stats[t.stockName]) stats[t.stockName] = { qty: 0, profit: 0, name: t.stockName };
                         stats[t.stockName].qty += t.quantity;
                         stats[t.stockName].profit += t.profit;
                     });
                     return Object.values(stats).sort((a, b) => b.qty - a.qty).slice(0, 5);
-                }, [transactions]);
+                }, [filteredTransactions]);
+
+                const filterLabels = {
+                    'all': 'All Time',
+                    'week': 'This Week',
+                    'month': 'This Month',
+                    'year': 'This Year',
+                    'custom': 'Custom Range'
+                };
 
                 return (
                     <div className="space-y-6 fade-in">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Date Filter Controls */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-stone-200">
+                            <div className="flex flex-wrap items-center gap-3">
+                                <span className="text-sm font-medium text-stone-600">Filter by:</span>
+                                <div className="flex flex-wrap gap-2">
+                                    {['all', 'week', 'month', 'year', 'custom'].map(filter => (
+                                        <button
+                                            key={filter}
+                                            onClick={() => setDateFilter(filter)}
+                                            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${dateFilter === filter
+                                                ? 'bg-amber-600 text-white'
+                                                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                                }`}
+                                        >
+                                            {filterLabels[filter]}
+                                        </button>
+                                    ))}
+                                </div>
+                                {dateFilter === 'custom' && (
+                                    <div className="flex gap-2 items-center">
+                                        <input
+                                            type="date"
+                                            className="p-2 border border-stone-300 rounded-lg text-sm"
+                                            value={customDateRange.start}
+                                            onChange={e => setCustomDateRange({ ...customDateRange, start: e.target.value })}
+                                        />
+                                        <span className="text-stone-400">to</span>
+                                        <input
+                                            type="date"
+                                            className="p-2 border border-stone-300 rounded-lg text-sm"
+                                            value={customDateRange.end}
+                                            onChange={e => setCustomDateRange({ ...customDateRange, end: e.target.value })}
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
-                                <h3 className="text-stone-500 text-sm font-medium">Total Inventory Value</h3>
-                                <p className="text-2xl font-bold text-amber-700 mt-2">{formatMoney(totalStockValue)}</p>
+                                <h3 className="text-stone-500 text-sm font-medium">Total Cost Price</h3>
+                                <p className="text-2xl font-bold text-red-600 mt-2">{formatMoney(totalCostPrice)}</p>
+                                <p className="text-xs text-stone-400 mt-1">Sum of all purchase costs</p>
                             </div>
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                                 <h3 className="text-stone-500 text-sm font-medium">Total Revenue</h3>
                                 <p className="text-2xl font-bold text-green-700 mt-2">{formatMoney(totalRevenue)}</p>
+                                <p className="text-xs text-stone-400 mt-1">Sum of all selling prices</p>
                             </div>
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                                 <h3 className="text-stone-500 text-sm font-medium">Total Profit</h3>
-                                <p className="text-2xl font-bold text-orange-600 mt-2">{formatMoney(totalProfit)}</p>
+                                <p className="text-2xl font-bold text-orange-600 mt-2">
+                                    {formatMoney(totalProfit)}
+                                    <span className="text-sm font-normal text-orange-500 ml-2">({profitMargin}%)</span>
+                                </p>
+                                <p className="text-xs text-stone-400 mt-1">Revenue - Cost Price (Margin %)</p>
+                            </div>
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
+                                <h3 className="text-stone-500 text-sm font-medium">Inventory Value</h3>
+                                <p className="text-2xl font-bold text-amber-700 mt-2">{formatMoney(totalStockValue)}</p>
+                                <p className="text-xs text-stone-400 mt-1">Current stock worth</p>
                             </div>
                         </div>
 
@@ -533,6 +772,7 @@
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                                 <h3 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
                                     {Icons.TrendingUp} Top Selling Products
+                                    {dateFilter !== 'all' && <span className="text-xs font-normal text-stone-400">({filterLabels[dateFilter]})</span>}
                                 </h3>
                                 {topSelling.length === 0 ? (
                                     <p className="text-stone-500 text-sm">No sales data available yet.</p>
@@ -558,8 +798,11 @@
                         </div>
 
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
-                            <h3 className="text-lg font-bold text-stone-800 mb-4">Recent Transactions</h3>
-                            {transactions.length === 0 ? (
+                            <h3 className="text-lg font-bold text-stone-800 mb-4">
+                                Recent Transactions
+                                {dateFilter !== 'all' && <span className="text-sm font-normal text-stone-400 ml-2">({filterLabels[dateFilter]})</span>}
+                            </h3>
+                            {filteredTransactions.length === 0 ? (
                                 <p className="text-stone-400">No transactions yet.</p>
                             ) : (
                                 <div className="overflow-x-auto">
@@ -573,7 +816,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {transactions.slice(0, 5).map(t => (
+                                            {filteredTransactions.slice(0, 5).map(t => (
                                                 <tr key={t.id} className="border-b border-stone-100 last:border-0 hover:bg-amber-50">
                                                     <td className="px-4 py-3 text-stone-500">{formatDateDisplay(t.date)}</td>
                                                     <td className="px-4 py-3 font-medium text-stone-800">{t.stockName} <span className="text-stone-400 text-xs">x{t.quantity}</span></td>
@@ -612,24 +855,24 @@
                                 <form onSubmit={handleSubmit} className="space-y-4">
                                     <div>
                                         <label className="block text-sm font-medium text-stone-700">Medicine Name</label>
-                                        <input required type="text" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" 
-                                            value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="e.g. Paracetamol" />
+                                        <input required type="text" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                            value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Paracetamol" />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-stone-700">Quantity</label>
-                                        <input required type="number" min="0" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" 
-                                            value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} placeholder="0" />
+                                        <input required type="number" min="0" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                            value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-sm font-medium text-stone-700">Cost Price</label>
-                                            <input required type="number" min="0" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" 
-                                                value={form.costPrice} onChange={e => setForm({...form, costPrice: e.target.value})} placeholder="₹" />
+                                            <input required type="number" min="0" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} placeholder="₹" />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-stone-700">Selling Price</label>
-                                            <input required type="number" min="0" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" 
-                                                value={form.sellingPrice} onChange={e => setForm({...form, sellingPrice: e.target.value})} placeholder="₹" />
+                                            <input required type="number" min="0" className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={form.sellingPrice} onChange={e => setForm({ ...form, sellingPrice: e.target.value })} placeholder="₹" />
                                         </div>
                                     </div>
                                     <button type="submit" className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 transition font-medium">Add to Inventory</button>
@@ -688,9 +931,9 @@
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-stone-800">{Icons.MapPin} Destinations</h3>
                             <div className="flex gap-2 mb-4">
-                                <input type="text" value={newDest} onChange={e => setNewDest(e.target.value)} 
+                                <input type="text" value={newDest} onChange={e => setNewDest(e.target.value)}
                                     className="flex-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" placeholder="e.g. Warehouse A" />
-                                <button type="button" onClick={() => { addDestination(newDest); setNewDest(''); }} 
+                                <button type="button" onClick={() => { addDestination(newDest); setNewDest(''); }}
                                     className="bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700">{Icons.Plus}</button>
                             </div>
                             <ul className="space-y-2">
@@ -707,9 +950,9 @@
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                             <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-stone-800">{Icons.Tag} Transaction Labels</h3>
                             <div className="flex gap-2 mb-4">
-                                <input type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)} 
+                                <input type="text" value={newLabel} onChange={e => setNewLabel(e.target.value)}
                                     className="flex-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none" placeholder="e.g. Delivered" />
-                                <button type="button" onClick={() => { addLabel(newLabel); setNewLabel(''); }} 
+                                <button type="button" onClick={() => { addLabel(newLabel); setNewLabel(''); }}
                                     className="bg-stone-600 text-white px-4 py-2 rounded-lg hover:bg-stone-700">{Icons.Plus}</button>
                             </div>
                             <div className="flex flex-wrap gap-2">
@@ -729,16 +972,16 @@
                 // Cart State
                 const [cart, setCart] = useState([]);
                 // Common Form State
-                const [commonData, setCommonData] = useState({ 
-                    destinationId: '', 
-                    label: '', 
-                    date: new Date().toISOString().split('T')[0] 
+                const [commonData, setCommonData] = useState({
+                    destinationId: '',
+                    label: '',
+                    date: new Date().toISOString().split('T')[0]
                 });
                 // Current Item Input State
                 const [currentItem, setCurrentItem] = useState({ stockId: '', quantity: '' });
 
                 const selectedStock = inventory.find(i => i.id === currentItem.stockId);
-                
+
                 // Add Item to Cart
                 const addToCart = () => {
                     if (!selectedStock) return showNotification('Please select a medicine', 'error');
@@ -788,7 +1031,7 @@
 
                 return (
                     <div className="max-w-4xl mx-auto space-y-6 fade-in">
-                        
+
                         {/* 1. Common Details Section */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                             <h2 className="text-lg font-bold mb-4 text-stone-800 flex items-center gap-2">
@@ -798,12 +1041,12 @@
                                 <div>
                                     <label className="block text-sm font-medium text-stone-700 mb-1">Date</label>
                                     <input type="date" className="w-full p-2 border border-stone-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
-                                        value={commonData.date} onChange={e => setCommonData({...commonData, date: e.target.value})} />
+                                        value={commonData.date} onChange={e => setCommonData({ ...commonData, date: e.target.value })} />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-stone-700 mb-1">Status Label</label>
                                     <select className="w-full p-2 border border-stone-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-                                        value={commonData.label} onChange={e => setCommonData({...commonData, label: e.target.value})}>
+                                        value={commonData.label} onChange={e => setCommonData({ ...commonData, label: e.target.value })}>
                                         <option value="">Select Status</option>
                                         {labels.map(l => <option key={l} value={l}>{l}</option>)}
                                     </select>
@@ -811,7 +1054,7 @@
                                 <div>
                                     <label className="block text-sm font-medium text-stone-700 mb-1">Destination</label>
                                     <select className="w-full p-2 border border-stone-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-                                        value={commonData.destinationId} onChange={e => setCommonData({...commonData, destinationId: e.target.value})}>
+                                        value={commonData.destinationId} onChange={e => setCommonData({ ...commonData, destinationId: e.target.value })}>
                                         <option value="">Select Destination</option>
                                         {destinations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                     </select>
@@ -829,7 +1072,7 @@
                                     <div>
                                         <label className="block text-sm font-medium text-stone-700 mb-1">Select Medicine</label>
                                         <select className="w-full p-2 border border-stone-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 bg-white"
-                                            value={currentItem.stockId} onChange={e => setCurrentItem({...currentItem, stockId: e.target.value})}>
+                                            value={currentItem.stockId} onChange={e => setCurrentItem({ ...currentItem, stockId: e.target.value })}>
                                             <option value="">Choose item...</option>
                                             {inventory.map(item => (
                                                 <option key={item.id} value={item.id} disabled={item.quantity === 0}>
@@ -840,9 +1083,9 @@
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-stone-700 mb-1">Quantity</label>
-                                        <input type="number" min="1" max={selectedStock?.quantity || 1} 
+                                        <input type="number" min="1" max={selectedStock?.quantity || 1}
                                             className="w-full p-2 border border-stone-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
-                                            value={currentItem.quantity} onChange={e => setCurrentItem({...currentItem, quantity: e.target.value})} 
+                                            value={currentItem.quantity} onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
                                             placeholder={selectedStock ? `Max: ${selectedStock.quantity}` : ''}
                                         />
                                     </div>
@@ -862,7 +1105,7 @@
                                 <h2 className="text-lg font-bold mb-4 text-stone-800 flex items-center gap-2">
                                     {Icons.ShoppingCart} Current Cart
                                 </h2>
-                                
+
                                 <div className="flex-1 overflow-y-auto min-h-[200px] mb-4">
                                     {cart.length === 0 ? (
                                         <div className="h-full flex flex-col items-center justify-center text-stone-400 border-2 border-dashed border-stone-200 rounded-lg">
@@ -905,7 +1148,7 @@
                                         <p className="text-2xl font-bold text-amber-600">{formatMoney(cartTotal)}</p>
                                     </div>
                                 </div>
-                                <button onClick={handleFinalSubmit} disabled={cart.length === 0} 
+                                <button onClick={handleFinalSubmit} disabled={cart.length === 0}
                                     className={`w-full mt-4 py-3 rounded-lg font-bold shadow-lg transition text-white
                                         ${cart.length === 0 ? 'bg-stone-300 cursor-not-allowed' : 'bg-green-700 hover:bg-green-800 shadow-green-200'}
                                     `}>
@@ -926,6 +1169,10 @@
                 const [showMonthlyReportControls, setShowMonthlyReportControls] = useState(false);
                 const [monthlyReportForm, setMonthlyReportForm] = useState({ destinationId: '', month: String(new Date().getMonth()), year: String(new Date().getFullYear()) });
 
+                // Edit transaction modal state
+                const [editingTransaction, setEditingTransaction] = useState(null);
+                const [editForm, setEditForm] = useState({ quantity: '', costPrice: '', sellingPrice: '', label: '', date: '' });
+
                 const years = Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i));
                 const months = [
                     { value: '0', label: 'January' }, { value: '1', label: 'February' },
@@ -938,9 +1185,9 @@
 
                 const filtered = transactions.filter(t => {
                     const matchesDate = filterDate ? t.date.startsWith(filterDate) : true;
-                    const matchesSearch = t.stockName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                                          t.destinationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                          t.label.toLowerCase().includes(searchTerm.toLowerCase());
+                    const matchesSearch = t.stockName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        t.destinationName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        t.label.toLowerCase().includes(searchTerm.toLowerCase());
                     const matchesDestination = destinationFilter ? t.destinationId === destinationFilter : true;
                     return matchesDate && matchesSearch && matchesDestination;
                 });
@@ -985,124 +1232,259 @@
                     setEditingId(null);
                 };
 
-                return (
-                    <div className="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden fade-in">
-                        <div className="p-4 border-b border-stone-200 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-                            <h3 className="font-bold text-lg text-stone-800">Transaction History</h3>
-                            <div className="flex flex-col md:flex-row gap-2 w-full lg:w-auto">
-                                <div className="flex gap-2 w-full md:w-auto">
-                                    <input type="date" className="p-2 border border-stone-300 rounded-lg text-sm flex-1 md:w-auto" 
-                                        value={filterDate} onChange={e => setFilterDate(e.target.value)} />
-                                    <select className="p-2 border border-stone-300 rounded-lg text-sm flex-1 md:w-40" 
-                                        value={destinationFilter} onChange={e => setDestinationFilter(e.target.value)}>
-                                        <option value="">All Destinations</option>
-                                        {destinations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="flex gap-2 w-full md:w-auto">
-                                    <input type="text" placeholder="Search..." className="p-2 border border-stone-300 rounded-lg text-sm flex-1 md:w-48"
-                                        value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                                    <button onClick={() => setShowMonthlyReportControls(!showMonthlyReportControls)} className="bg-stone-200 text-stone-700 px-4 py-2 rounded-lg hover:bg-stone-300 transition flex items-center justify-center gap-2 whitespace-nowrap">
-                                        {Icons.Printer} Report
-                                    </button>
-                                </div>
+                // Populate edit form when editing transaction changes
+                useEffect(() => {
+                    if (editingTransaction) {
+                        setEditForm({
+                            quantity: editingTransaction.quantity,
+                            costPrice: editingTransaction.costPrice,
+                            sellingPrice: editingTransaction.sellingPrice,
+                            label: editingTransaction.label,
+                            date: editingTransaction.date.split('T')[0]
+                        });
+                    }
+                }, [editingTransaction]);
+
+                const handleEditSubmit = (e) => {
+                    e.preventDefault();
+                    if (!editingTransaction) return;
+
+                    const stockItem = inventory.find(i => i.id === editingTransaction.stockId);
+                    const maxQty = stockItem ? stockItem.quantity + editingTransaction.quantity : editingTransaction.quantity;
+
+                    if (Number(editForm.quantity) > maxQty) {
+                        alert(`Cannot set quantity to ${editForm.quantity}. Maximum available: ${maxQty}`);
+                        return;
+                    }
+
+                    updateTransaction(editingTransaction.id, {
+                        quantity: Number(editForm.quantity),
+                        costPrice: Number(editForm.costPrice),
+                        sellingPrice: Number(editForm.sellingPrice),
+                        label: editForm.label,
+                        date: editForm.date
+                    });
+                    setEditingTransaction(null);
+                };
+
+                // Edit Transaction Modal
+                const EditTransactionModal = () => {
+                    if (!editingTransaction) return null;
+
+                    return (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+                            <div className="bg-white w-full max-w-md p-6 rounded-xl shadow-xl">
+                                <h3 className="text-lg font-bold text-stone-800 mb-4">Edit Transaction</h3>
+                                <p className="text-sm text-stone-500 mb-4">Editing: <span className="font-medium text-stone-700">{editingTransaction.stockName}</span></p>
+
+                                <form onSubmit={handleEditSubmit} className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700 mb-1">Quantity</label>
+                                            <input type="number" min="1" required
+                                                className="w-full p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={editForm.quantity}
+                                                onChange={e => setEditForm({ ...editForm, quantity: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700 mb-1">Date</label>
+                                            <input type="date" required
+                                                className="w-full p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={editForm.date}
+                                                onChange={e => setEditForm({ ...editForm, date: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700 mb-1">Cost Price (₹)</label>
+                                            <input type="number" min="0" step="0.01" required
+                                                className="w-full p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={editForm.costPrice}
+                                                onChange={e => setEditForm({ ...editForm, costPrice: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700 mb-1">Selling Price (₹)</label>
+                                            <input type="number" min="0" step="0.01" required
+                                                className="w-full p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={editForm.sellingPrice}
+                                                onChange={e => setEditForm({ ...editForm, sellingPrice: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-stone-700 mb-1">Status</label>
+                                        <select
+                                            className="w-full p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white"
+                                            value={editForm.label}
+                                            onChange={e => setEditForm({ ...editForm, label: e.target.value })}
+                                        >
+                                            {labels.map(l => <option key={l} value={l}>{l}</option>)}
+                                        </select>
+                                    </div>
+
+                                    {editForm.quantity && editForm.sellingPrice && (
+                                        <div className="bg-stone-50 p-3 rounded-lg text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-stone-500">New Total:</span>
+                                                <span className="font-bold text-stone-800">{formatMoney(editForm.quantity * editForm.sellingPrice)}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-stone-500">New Profit:</span>
+                                                <span className="font-bold text-green-600">{formatMoney((editForm.sellingPrice - editForm.costPrice) * editForm.quantity)}</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-3 pt-2">
+                                        <button type="button" onClick={() => setEditingTransaction(null)}
+                                            className="flex-1 py-2 rounded-lg border border-stone-300 text-stone-700 hover:bg-stone-50 transition">
+                                            Cancel
+                                        </button>
+                                        <button type="submit"
+                                            className="flex-1 py-2 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition">
+                                            Save Changes
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
                         </div>
-                        {showMonthlyReportControls && (
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 mb-6 fade-in">
-                                <h3 className="text-lg font-bold mb-4 text-stone-800 flex items-center gap-2">
-                                    Generate Monthly Report
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-stone-700">Destination</label>
-                                        <select className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                                            value={monthlyReportForm.destinationId} onChange={e => setMonthlyReportForm({...monthlyReportForm, destinationId: e.target.value})}>
-                                            <option value="">Select Destination</option>
+                    );
+                };
+
+                return (
+                    <>
+                        <EditTransactionModal />
+                        <div className="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden fade-in">
+                            <div className="p-4 border-b border-stone-200 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                                <h3 className="font-bold text-lg text-stone-800">Transaction History</h3>
+                                <div className="flex flex-col md:flex-row gap-2 w-full lg:w-auto">
+                                    <div className="flex gap-2 w-full md:w-auto">
+                                        <input type="date" className="p-2 border border-stone-300 rounded-lg text-sm flex-1 md:w-auto"
+                                            value={filterDate} onChange={e => setFilterDate(e.target.value)} />
+                                        <select className="p-2 border border-stone-300 rounded-lg text-sm flex-1 md:w-40"
+                                            value={destinationFilter} onChange={e => setDestinationFilter(e.target.value)}>
+                                            <option value="">All Destinations</option>
                                             {destinations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-stone-700">Month</label>
-                                        <select className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                                            value={monthlyReportForm.month} onChange={e => setMonthlyReportForm({...monthlyReportForm, month: e.target.value})}>
-                                            {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-stone-700">Year</label>
-                                        <select className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                                            value={monthlyReportForm.year} onChange={e => setMonthlyReportForm({...monthlyReportForm, year: e.target.value})}>
-                                            {years.map(y => <option key={y} value={y}>{y}</option>)}
-                                        </select>
+                                    <div className="flex gap-2 w-full md:w-auto">
+                                        <input type="text" placeholder="Search..." className="p-2 border border-stone-300 rounded-lg text-sm flex-1 md:w-48"
+                                            value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                                        <button onClick={() => setShowMonthlyReportControls(!showMonthlyReportControls)} className="bg-stone-200 text-stone-700 px-4 py-2 rounded-lg hover:bg-stone-300 transition flex items-center justify-center gap-2 whitespace-nowrap">
+                                            {Icons.Printer} Report
+                                        </button>
                                     </div>
                                 </div>
-                                <button onClick={() => {
-                                    if (!monthlyReportForm.destinationId) {
-                                        alert('Please select a destination for the monthly report.');
-                                        return;
-                                    }
-                                    setMonthlyReportData(monthlyReportForm);
-                                    setShowMonthlyReportModal(true);
-                                }} className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 transition font-medium">
-                                    Generate Report
-                                </button>
                             </div>
-                        )}
-                        <div className="overflow-x-auto min-h-[400px]">
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-amber-50 text-amber-900 uppercase text-xs tracking-wider">
-                                    <tr>
-                                        <SortHeader label="Status" sortKey="label" />
-                                        <SortHeader label="Date" sortKey="date" />
-                                        <SortHeader label="Medicine" sortKey="stockName" />
-                                        <SortHeader label="Destination" sortKey="destinationName" />
-                                        <SortHeader label="Qty" sortKey="quantity" />
-                                        <SortHeader label="CP" sortKey="costPrice" align="right" />
-                                        <SortHeader label="Total" sortKey="totalAmount" align="right" />
-                                        <th className="px-6 py-3 text-right">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-stone-100">
-                                    {sorted.map(t => (
-                                        <tr key={t.id} className="hover:bg-amber-50 transition group">
-                                            <td className="px-6 py-4">
-                                                {editingId === t.id ? (
-                                                    <select autoFocus className="p-1 border rounded text-xs" defaultValue={t.label} onBlur={() => setEditingId(null)} onChange={(e) => handleStatusChange(t, e.target.value)}>
-                                                        {labels.map(l => <option key={l} value={l}>{l}</option>)}
-                                                    </select>
-                                                ) : (
-                                                    <button onClick={() => setEditingId(t.id)} className="px-2 py-1 rounded text-xs font-bold bg-stone-100 text-stone-700 hover:bg-stone-200 transition flex items-center gap-1">
-                                                        {t.label} <span className="opacity-0 group-hover:opacity-50 text-[10px]">✎</span>
-                                                    </button>
-                                                )}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-stone-500">{formatDateDisplay(t.date)}</td>
-                                            <td className="px-6 py-4 font-medium text-stone-800">{t.stockName}</td>
-                                            <td className="px-6 py-4 text-stone-600">{t.destinationName}</td>
-                                            <td className="px-6 py-4 text-stone-600">{t.quantity}</td>
-                                            <td className="px-6 py-4 text-right text-stone-500">{formatMoney(t.costPrice * t.quantity)}</td>
-                                            <td className="px-6 py-4 text-right font-bold text-stone-800">{formatMoney(t.totalAmount)}</td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button onClick={() => setPrintInvoiceId(t.invoiceId)} className="text-stone-400 hover:text-amber-600 transition" title="Print Invoice">
-                                                    {Icons.Printer}
-                                                </button>
-                                            </td>
+                            {showMonthlyReportControls && (
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200 mb-6 fade-in">
+                                    <h3 className="text-lg font-bold mb-4 text-stone-800 flex items-center gap-2">
+                                        Generate Monthly Report
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700">Destination</label>
+                                            <select className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={monthlyReportForm.destinationId} onChange={e => setMonthlyReportForm({ ...monthlyReportForm, destinationId: e.target.value })}>
+                                                <option value="">Select Destination</option>
+                                                {destinations.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700">Month</label>
+                                            <select className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={monthlyReportForm.month} onChange={e => setMonthlyReportForm({ ...monthlyReportForm, month: e.target.value })}>
+                                                {months.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-stone-700">Year</label>
+                                            <select className="w-full mt-1 p-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
+                                                value={monthlyReportForm.year} onChange={e => setMonthlyReportForm({ ...monthlyReportForm, year: e.target.value })}>
+                                                {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => {
+                                        if (!monthlyReportForm.destinationId) {
+                                            alert('Please select a destination for the monthly report.');
+                                            return;
+                                        }
+                                        setMonthlyReportData(monthlyReportForm);
+                                        setShowMonthlyReportModal(true);
+                                    }} className="w-full bg-amber-600 text-white py-2 rounded-lg hover:bg-amber-700 transition font-medium">
+                                        Generate Report
+                                    </button>
+                                </div>
+                            )}
+                            <div className="overflow-x-auto min-h-[400px]">
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-amber-50 text-amber-900 uppercase text-xs tracking-wider">
+                                        <tr>
+                                            <SortHeader label="Status" sortKey="label" />
+                                            <SortHeader label="Date" sortKey="date" />
+                                            <SortHeader label="Medicine" sortKey="stockName" />
+                                            <SortHeader label="Destination" sortKey="destinationName" />
+                                            <SortHeader label="Qty" sortKey="quantity" />
+                                            <SortHeader label="CP" sortKey="costPrice" align="right" />
+                                            <SortHeader label="Total" sortKey="totalAmount" align="right" />
+                                            <th className="px-6 py-3 text-right">Actions</th>
                                         </tr>
-                                    ))}
-                                    {sorted.length === 0 && <tr><td colSpan="7" className="text-center py-8 text-stone-400">No records found.</td></tr>}
-                                </tbody>
-                                <tfoot>
-                                    <tr className="bg-amber-100 text-amber-900 font-bold">
-                                        <td colSpan="5" className="px-6 py-3 text-right">Totals:</td>
-                                        <td className="px-6 py-3 text-right">{formatMoney(totals.totalCostPrice)}</td>
-                                        <td className="px-6 py-3 text-right">{formatMoney(totals.totalSellingPrice)}</td>
-                                        <td className="px-6 py-3 text-right text-green-700">{formatMoney(totals.totalProfit)}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-stone-100">
+                                        {sorted.map(t => (
+                                            <tr key={t.id} className="hover:bg-amber-50 transition group">
+                                                <td className="px-6 py-4">
+                                                    {editingId === t.id ? (
+                                                        <select autoFocus className="p-1 border rounded text-xs" defaultValue={t.label} onBlur={() => setEditingId(null)} onChange={(e) => handleStatusChange(t, e.target.value)}>
+                                                            {labels.map(l => <option key={l} value={l}>{l}</option>)}
+                                                        </select>
+                                                    ) : (
+                                                        <button onClick={() => setEditingId(t.id)} className="px-2 py-1 rounded text-xs font-bold bg-stone-100 text-stone-700 hover:bg-stone-200 transition flex items-center gap-1">
+                                                            {t.label} <span className="opacity-0 group-hover:opacity-50 text-[10px]">✎</span>
+                                                        </button>
+                                                    )}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-stone-500">{formatDateDisplay(t.date)}</td>
+                                                <td className="px-6 py-4 font-medium text-stone-800">{t.stockName}</td>
+                                                <td className="px-6 py-4 text-stone-600">{t.destinationName}</td>
+                                                <td className="px-6 py-4 text-stone-600">{t.quantity}</td>
+                                                <td className="px-6 py-4 text-right text-stone-500">{formatMoney(t.costPrice * t.quantity)}</td>
+                                                <td className="px-6 py-4 text-right font-bold text-stone-800">{formatMoney(t.totalAmount)}</td>
+                                                <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                                    <button onClick={() => setEditingTransaction(t)} className="text-stone-400 hover:text-blue-600 transition" title="Edit Transaction">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                                    </button>
+                                                    <button onClick={() => {
+                                                        if (confirm(`Delete transaction for ${t.stockName}? This will restore ${t.quantity} units to inventory.`)) {
+                                                            deleteTransaction(t.id);
+                                                        }
+                                                    }} className="text-stone-400 hover:text-red-600 transition" title="Delete Transaction">
+                                                        {Icons.Trash2}
+                                                    </button>
+                                                    <button onClick={() => setPrintInvoiceId(t.invoiceId)} className="text-stone-400 hover:text-amber-600 transition" title="Print Invoice">
+                                                        {Icons.Printer}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {sorted.length === 0 && <tr><td colSpan="7" className="text-center py-8 text-stone-400">No records found.</td></tr>}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="bg-amber-100 text-amber-900 font-bold">
+                                            <td colSpan="5" className="px-6 py-3 text-right">Totals:</td>
+                                            <td className="px-6 py-3 text-right">{formatMoney(totals.totalCostPrice)}</td>
+                                            <td className="px-6 py-3 text-right">{formatMoney(totals.totalSellingPrice)}</td>
+                                            <td className="px-6 py-3 text-right text-green-700">{formatMoney(totals.totalProfit)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </div>
-                    </div>
+                    </>
                 );
             };
 
@@ -1110,12 +1492,12 @@
                 <div className="max-w-xl mx-auto space-y-6 fade-in">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
                         <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-stone-800">{Icons.Download} Data Management</h3>
-                        
+
                         <div className="space-y-4">
                             <button onClick={exportData} className="flex items-center justify-center gap-2 w-full bg-amber-600 text-white py-3 rounded-lg hover:bg-amber-700 transition">
                                 {Icons.Download} Export Data to JSON
                             </button>
-                            
+
                             <div className="relative border-2 border-dashed border-stone-300 rounded-lg p-6 text-center hover:bg-stone-50 transition group">
                                 <input type="file" accept=".json" onChange={importData} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                                 <div className="flex flex-col items-center justify-center text-stone-500 group-hover:text-amber-600">
@@ -1137,7 +1519,7 @@
 
             // --- Layout ---
             const NavItem = ({ id, icon, label, onClick }) => (
-                <button 
+                <button
                     onClick={() => {
                         setView(id);
                         if (onClick) onClick();
@@ -1223,15 +1605,16 @@
                 </div>
             );
         }
-        
+
         // --- Export/Import Helper Functions (moved outside App to be accessible if needed) ---
         // Note: In this single file structure, they are inside App scope due to state dependency.
         // We redefine duplicates here just for reference or if external usage was needed, but logic is inside App.
-        const importData = (e) => document.querySelector('input[type=file]').click(); 
-        const exportData = () => {}; 
+        const importData = (e) => document.querySelector('input[type=file]').click();
+        const exportData = () => { };
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
 </body>
+
 </html>
